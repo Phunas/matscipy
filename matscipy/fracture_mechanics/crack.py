@@ -1,5 +1,3 @@
-# ======================================================================
-# matscipy - Python materials science tools
 # https://github.com/libAtoms/matscipy
 #
 # Copyright (2014) James Kermode, King's College London
@@ -1203,7 +1201,7 @@ def find_tip_broken_bonds(atoms, cutoff, bulk_nn=4, boundary_thickness=None):
         Number of nearest neighbours for the standard bulk configuration.
     boundary_buffer : float
         Thickness of the boundaries.
-        Defaults to cutoff distance.
+       Defaults to cutoff distance.
 
     Returns
     -------
@@ -1226,20 +1224,45 @@ def find_tip_broken_bonds(atoms, cutoff, bulk_nn=4, boundary_thickness=None):
     coordination_list = np.bincount(i, minlength=len(atoms))
 
     # list of atom numbers with at least one broken bond
-    broken_bonds_array = np.where(coordination_list <= bulk_nn-1)
+    undercoordinated_atoms = np.where(coordination_list <= bulk_nn-1)[0]
+    crack_atoms = undercoordinated_atoms.copy()
 
-    # finds the atom number with the most positive x-valued position with a broken bond(s)
-    # within the bounded section
-    atom_number = 0
-    for m in range(0, len(broken_bonds_array[0])):
-        temp_atom_pos = atoms.positions[broken_bonds_array[0][m]]
-        if temp_atom_pos[0] > atoms.positions[atom_number,0]:
-            if left_boundary < temp_atom_pos[0] < right_boundary:
-                if bottom_boundary < temp_atom_pos[1] < top_boundary:
-                    atom_number = m
+    crack_atoms = crack_atoms[(left_boundary < atoms.positions[crack_atoms, 0]) &
+                              (atoms.positions[crack_atoms, 0] < right_boundary) &
+                              (bottom_boundary < atoms.positions[crack_atoms, 1]) &
+                              (atoms.positions[crack_atoms, 1] < top_boundary)]
+    
 
-    tip_position = atoms.positions[broken_bonds_array[0][atom_number]]
+    indexing_atoms = np.array(range(len(atoms)))
+    crack_mask = np.zeros(len(atoms), dtype=bool)
+    crack_mask[crack_atoms] = True
+    atoms.set_array('crack_mask', crack_mask)
+    #atoms.arrays["crack_mask"] = crack_mask.astype(int)
+    x_positions = atoms.positions[crack_atoms, 0]
+    crack_indexes = indexing_atoms[crack_mask]
+    for_order = zip(list(x_positions), list(crack_indexes))
+    #print('for_order: ', for_order)
+    order = sorted(for_order, key = lambda for_order: for_order[0])
+    #print('order: ', order)
+   
+    order_indecies = list(np.array(order)[:,1].astype(int))
 
+    #print('order_indecies: ', order_indecies)
+    
+    tip_atoms = []
+    while len(tip_atoms) < 2:
+        new_tip = order_indecies.pop()
+        print('new_tip: ', new_tip)
+        if (len(tip_atoms) != 0 and 
+            np.sign(atoms.positions[new_tip,1]) == np.sign(atoms.positions[tip_atoms[-1],1])):
+            continue
+        tip_atoms.append(new_tip)
+
+    tip_mask = np.zeros(len(atoms), dtype=bool)
+    tip_mask[tip_atoms] = True
+    atoms.set_array('crack_tip', tip_mask)
+
+    tip_position = atoms.positions[tip_atoms,:].mean(axis=0)
     return np.array((tip_position[0], tip_position[1], atoms.cell[2,2]/2.0))
 
 
@@ -1494,3 +1517,4 @@ class ConstantStrainRate(object):
 
         if rigid_constraints == False:
             atoms.constraints = initial_constraints
+            
